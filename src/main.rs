@@ -77,7 +77,7 @@ fn main() {
 
     // without this line, we should see two abstract type sets in the output
     // due to the conditional on line 118, otherwise all variables will be in the same sets
-    // simple_func(30, 300); 
+    simple_func(30, 300); 
 
     let site_ufs = SITE_UFS.lock().unwrap();
     site_ufs.print_analysis();
@@ -117,7 +117,7 @@ fn simple_func(x: u32, y: u32) -> u32 {
 
     if test > 300 {
         // TODO: THIS IMPLEMENTAITON REQUIRES SSA FORM!
-        // is that fine ???
+        // is that fine ??? a smarter choice of tag probably addresses this.
         // basically because value_uf has to incorporate both old result here and result2 with tags for proper merging
         let result2 = result + test;
         value_uf.make_set(format!("VAL:{}", result2));

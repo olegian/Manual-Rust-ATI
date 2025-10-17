@@ -76,7 +76,7 @@ where
             return x_root;
         }
 
-        // Union by rank
+        // Union towards larger rank
         if self.rank[x_root] < self.rank[y_root] {
             self.parent[x_root] = y_root;
             y_root
