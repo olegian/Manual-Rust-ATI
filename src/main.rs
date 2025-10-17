@@ -77,7 +77,7 @@ fn main() {
 
     // without this line, we should see two abstract type sets in the output
     // due to the conditional on line 118, otherwise all variables will be in the same sets
-    simple_func(30, 300); 
+    // simple_func(30, 300); 
 
     let site_ufs = SITE_UFS.lock().unwrap();
     site_ufs.print_analysis();
