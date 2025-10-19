@@ -1,75 +1,23 @@
 mod union_find;
+mod site;
+
 use union_find::UnionFind;
-use std::{collections::HashMap, sync::{LazyLock, Mutex}};
+use site::{Sites};
+use std::{sync::{LazyLock, Mutex}};
 
-struct Site {
-    type_uf: UnionFind<String>,
-    var_tags: HashMap<String, String>,
-    observed_var_tags: Vec<(String, String)>,
-}
-
-impl Site {
-    pub fn new() -> Self {
-        Site {
-            type_uf: UnionFind::new(),
-            var_tags: HashMap::new(),
-            observed_var_tags: Vec::new(),
-        }
-    }
-
-    pub fn observe_var(&mut self, var: String, tag: String) {
-        self.observed_var_tags.push((var, tag));
-    }
-
-    pub fn update(&mut self, value_uf: &mut UnionFind<String>) {
-        for (new_var, new_var_tag) in &self.observed_var_tags {
-            let new_leader_tag = value_uf.find(new_var_tag).unwrap(); // ? is this unwrap safe? 
-            self.type_uf.make_set(new_leader_tag.clone());
-
-            if let Some(old_tag) = self.var_tags.get(new_var) {
-                let old_leader_tag = value_uf.find(old_tag).unwrap();
-
-                let merged = self.type_uf.union(&old_leader_tag, &new_leader_tag).unwrap();
-                self.var_tags.insert(new_var.clone(), merged);
-            } else {
-                self.var_tags.insert(new_var.clone(), new_leader_tag);
-            }
-        }
-    }
-
-    pub fn get_leaders(&self) -> &HashMap<String, String> {
-        &self.var_tags
-    }
-}
-
+/// Global UF tracking value interaction sets.
+/// Whenever two values are observed interacting, union together the tags (SetIds)
+/// stored in this structure.
+/// Any time a new value is used (either literal values, or a new value is bound to
+/// a new variable with `let`), make a new set in this structure with a unique SetId
+/// to represent the value.
 static VALUE_UF: LazyLock<Mutex<UnionFind<String>>> = LazyLock::new(|| Mutex::new(UnionFind::new()));
+
+/// Tracks (potentially multiple) program sites which are under analysis.
+/// At the beginning of a site, create a new Site using `site_ufs.get_site(id)`.
+/// At the end of a site, call `site_ufs.get_site(id).update(value_uf)`.
+/// View `site.rs` for more information.
 static SITE_UFS: LazyLock<Mutex<Sites>> = LazyLock::new(|| Mutex::new(Sites::new()));
-
-struct Sites {
-    locs: HashMap<usize, Site>,
-}
-impl Sites {
-    pub fn new() -> Self {
-        Sites { locs: HashMap::new()}
-    }
-
-    pub fn get_site(&mut self, id: usize) -> &mut Site {
-        if !self.locs.contains_key(&id) {
-            self.locs.insert(id, Site::new());
-        }
-
-        self.locs.get_mut(&id).unwrap()
-    }
-
-    pub fn print_analysis(&self) {
-        for (id, site) in self.locs.iter() {
-            println!("=== AT SITE {} ===", id);
-            for (var, leader) in site.get_leaders() {
-                println!("{var} -> {leader}");
-            }
-        }
-    }
-}
 
 fn main() {
     simple_func(10, 100);
@@ -77,16 +25,20 @@ fn main() {
 
     // without this line, we should see two abstract type sets in the output
     // due to the conditional on line 118, otherwise all variables will be in the same sets
-    simple_func(30, 300); 
+    // simple_func(30, 300); 
 
     let site_ufs = SITE_UFS.lock().unwrap();
     site_ufs.print_analysis();
 }
 
+/// This is an example of a function that we want to analyze
+/// Each white space seperated line is a line of code we are analyzing,
+/// the first of which is the actual code, the following are the added
+/// lines to perform ATI.
 fn simple_func(x: u32, y: u32) -> u32 {
     let mut value_uf = VALUE_UF.lock().unwrap();
     let mut site_ufs = SITE_UFS.lock().unwrap();
-    let site = site_ufs.get_site(0);
+    let site = site_ufs.get_site(0);  // create a new analysis site. View site.rs for more info
 
     value_uf.make_set(format!("VAL:{}", x));  // for parameter input
     value_uf.make_set(format!("VAL:{}", y));
@@ -96,11 +48,13 @@ fn simple_func(x: u32, y: u32) -> u32 {
     let a: u32 = 2;
     value_uf.make_set(format!("LIT:{}", 2));
     value_uf.make_set(format!("VAL:{}", a));
+    value_uf.union(&format!("LIT:{}", 2), &format!("VAL:{}", a));
     site.observe_var("VAR:a".into(), format!("VAL:{}", a));
 
     let b: u32 = 3;
     value_uf.make_set(format!("LIT:{}", 3));
     value_uf.make_set(format!("VAL:{}", b));
+    value_uf.union(&format!("LIT:{}", 3), &format!("VAL:{}", b));
     site.observe_var("VAR:b".into(), format!("VAL:{}", b));
 
     let result = a + x;
