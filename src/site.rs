@@ -1,5 +1,8 @@
 use std::collections::HashMap;
+use std::hash::Hash;
+use std::fmt::Debug;
 
+use crate::Tag;
 use crate::union_find::UnionFind;
 
 /// A site captures a set of lines in the source code under analysis. A site starts
@@ -21,13 +24,13 @@ use crate::union_find::UnionFind;
 /// 
 /// `var_tags` contains the ATI output, mapping the variable identifiers (names) to a value tag,
 /// the leader tag of a set of values in `value_uf` which have been observed interacting together.
-pub struct Site {
-    type_uf: UnionFind<String>,
-    var_tags: HashMap<String, String>,
-    observed_var_tags: Vec<(String, String)>,
+pub struct Site<T> where T: Eq + Hash + Clone {
+    type_uf: UnionFind<T>,
+    var_tags: HashMap<String, T>,
+    observed_var_tags: Vec<(String, T)>,
 }
 
-impl Site {
+impl<T> Site<T> where T: Eq + Hash + Clone {
     pub fn new() -> Self {
         Site {
             type_uf: UnionFind::new(),
@@ -37,12 +40,12 @@ impl Site {
     }
 
     /// Registers a new variable pertaining to this analysis site.
-    pub fn observe_var(&mut self, var: String, tag: String) {
-        self.observed_var_tags.push((var, tag));
+    pub fn observe_var(&mut self, var: String, val_tag: T) {
+        self.observed_var_tags.push((var, val_tag));
     }
 
     /// Algorithm from "Dynamic inference of Abstract Types" by Guo et. al.
-    pub fn update(&mut self, value_uf: &mut UnionFind<String>) {
+    pub fn update(&mut self, value_uf: &mut UnionFind<T>) {
         for (new_var, new_var_tag) in &self.observed_var_tags {
             let new_leader_tag = value_uf.find(new_var_tag).unwrap(); // ? is this unwrap safe? 
             self.type_uf.make_set(new_leader_tag.clone());
@@ -60,22 +63,22 @@ impl Site {
 
     /// Returns the mapping of the ATI output, var identifiers
     /// to value interaction set leader tags.
-    pub fn get_leaders(&self) -> &HashMap<String, String> {
+    pub fn get_leaders(&self) -> &HashMap<String, T> {
         &self.var_tags
     }
 }
 
-pub struct Sites {
-    locs: HashMap<usize, Site>,
+pub struct Sites<T> where T: Eq + Hash + Clone {
+    locs: HashMap<usize, Site<T>>,
 }
-impl Sites {
+impl<T> Sites<T> where T: Eq + Hash + Clone + Debug {
     pub fn new() -> Self {
         Sites { locs: HashMap::new()}
     }
 
     /// Registers a new site with a given id, or returns
     /// the site with the provided id.
-    pub fn get_site(&mut self, id: usize) -> &mut Site {
+    pub fn get_site(&mut self, id: usize) -> &mut Site<T> {
         if !self.locs.contains_key(&id) {
             self.locs.insert(id, Site::new());
         }
@@ -88,7 +91,7 @@ impl Sites {
         for (id, site) in self.locs.iter() {
             println!("=== AT SITE {} ===", id);
             for (var, leader) in site.get_leaders() {
-                println!("{var} -> {leader}");
+                println!("{var} -> {leader:?}");
             }
         }
     }
