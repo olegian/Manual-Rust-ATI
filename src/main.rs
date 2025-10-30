@@ -107,6 +107,9 @@ fn complex_func(iterations: u32) -> (u32, u32) {
     let mut value_uf = VALUE_UF.lock().unwrap();
     let mut site_ufs = SITE_UFS.lock().unwrap();
     let site = site_ufs.get_site(1);
+
+    site.observe_var("VAR:iterations".into(), Tag::new(&iterations));
+    value_uf.make_set(Tag::new(&iterations));
     
     let mut current: u32 = 0;
     site.observe_var("VAR:current".into(), Tag::new(&current));
@@ -123,6 +126,7 @@ fn complex_func(iterations: u32) -> (u32, u32) {
     for i in 0..iterations {
         site.observe_var("VAR:i".into(), Tag::new(&i));
         value_uf.make_set(Tag::new(&i));
+        value_uf.union(&Tag::new(&i), &Tag::new(&iterations));
 
         let tmp = next;
         site.observe_var("VAR:tmp".into(), Tag::new(&tmp));
