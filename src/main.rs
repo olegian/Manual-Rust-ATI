@@ -1,9 +1,11 @@
 mod union_find;
 mod site;
+mod tag;
 
 use union_find::UnionFind;
 use site::{Sites};
 use std::{sync::{LazyLock, Mutex}};
+use tag::Tag;
 
 /// Global UF tracking value interaction sets.
 /// Whenever two values are observed interacting, union together the tags (SetIds)
@@ -11,42 +13,27 @@ use std::{sync::{LazyLock, Mutex}};
 /// Any time a new value is used (either literal values, or a new value is bound to
 /// a new variable with `let`), make a new set in this structure with a unique SetId
 /// to represent the value.
-static VALUE_UF: LazyLock<Mutex<UnionFind<Tag<u32>>>> = LazyLock::new(|| Mutex::new(UnionFind::new()));
+static VALUE_UF: LazyLock<Mutex<UnionFind>> = LazyLock::new(|| Mutex::new(UnionFind::new()));
 
 /// Tracks (potentially multiple) program sites which are under analysis.
 /// At the beginning of a site, create a new Site using `site_ufs.get_site(id)`.
 /// At the end of a site, call `site_ufs.get_site(id).update(value_uf)`.
 /// View `site.rs` for more information.
-static SITE_UFS: LazyLock<Mutex<Sites<Tag<u32>>>> = LazyLock::new(|| Mutex::new(Sites::new()));
+static SITE_UFS: LazyLock<Mutex<Sites>> = LazyLock::new(|| Mutex::new(Sites::new()));
 
 fn main() {
-    // simple_func(10, 100);
-    // simple_func(20, 200);
+    simple_func(10, 100);
+    simple_func(20, 200);
 
     // without this line, we should see two abstract type sets in the output
     // due to the conditional on line 118, otherwise all variables will be in the same sets
     // simple_func(30, 300); 
 
-    let res = complex_func(5);
-    println!("{:?}", res);
+    // let res = complex_func(5);
+    // println!("{:?}", res);
 
     let site_ufs = SITE_UFS.lock().unwrap();
     site_ufs.print_analysis();
-}
-
-#[derive(PartialEq, Eq, Hash, Clone, Debug)]
-struct Tag<T> where T: Copy {
-    addr: String,
-    value: T,
-}
-
-impl<T> Tag<T> where T: Copy {
-    fn new(value: &T) -> Self {
-        Tag {
-            addr: format!("{:p}", value),
-            value: *value,
-        }
-    }
 }
 
 /// This is an example of a function that we want to analyze
@@ -58,30 +45,30 @@ fn simple_func(x: u32, y: u32) -> u32 {
     let mut site_ufs = SITE_UFS.lock().unwrap();
     let site = site_ufs.get_site(0);  // create a new analysis site. View site.rs for more info
 
-    value_uf.make_set(Tag::new(&x));  // for parameter input
-    value_uf.make_set(Tag::new(&y));  // for parameter input
-    site.observe_var("VAR:x".into(), Tag::new(&x));
-    site.observe_var("VAR:y".into(), Tag::new(&y));
+    value_uf.make_set(&x);  // for parameter input
+    value_uf.make_set(&y);  // for parameter input
+    site.observe_var(stringify!(x), &x);
+    site.observe_var(stringify!(y), &y);
 
     let a: u32 = 2;
-    value_uf.make_set(Tag::new(&a));
-    site.observe_var("VAR:a".into(), Tag::new(&a));
+    value_uf.make_set(&a);
+    site.observe_var(stringify!(a), &a);
 
     let b: u32 = 2;
-    value_uf.make_set(Tag::new(&b));
-    site.observe_var("VAR:b".into(), Tag::new(&b));
+    value_uf.make_set(&b);
+    site.observe_var(stringify!(b), &b);
 
-    value_uf.union(&Tag::new(&a), &Tag::new(&x));
+    value_uf.union_vals(&a, &x);
     let result = a + x;
-    value_uf.make_set(Tag::new(&result));
-    value_uf.union(&Tag::new(&result), &Tag::new(&a));
-    site.observe_var("VAR:result".into(), Tag::new(&result));
+    value_uf.make_set(&result);
+    value_uf.union_vals(&result, &a);
+    site.observe_var(stringify!(result), &result);
 
-    value_uf.union(&Tag::new(&b), &Tag::new(&y));
+    value_uf.union_vals(&b, &y);
     let test = b + y;
-    value_uf.make_set(Tag::new(&test));
-    value_uf.union(&Tag::new(&test), &Tag::new(&b));
-    site.observe_var("VAR:test".into(), Tag::new(&test));
+    value_uf.make_set(&test);
+    value_uf.union_vals(&test, &b);
+    site.observe_var(stringify!(test), &test);
 
     if test > 300 {
         // TODO: THIS IMPLEMENTAITON REQUIRES SSA FORM!
@@ -90,11 +77,11 @@ fn simple_func(x: u32, y: u32) -> u32 {
         // the value here in result, and the value stored in result2,
         // in otherwords, we cannot get rid of the old value, as we need to retain
         // it's tag for proper merging
-        value_uf.union(&Tag::new(&result), &Tag::new(&test));
+        value_uf.union_vals(&result, &test);
         let result2 = result + test;
-        value_uf.make_set(Tag::new(&result2));
-        value_uf.union(&Tag::new(&result2), &Tag::new(&result));
-        site.observe_var("VAR:result2".into(), Tag::new(&result2));
+        value_uf.make_set(&result2);
+        value_uf.union_vals(&result2, &result);
+        site.observe_var(stringify!(result2), &result2);
     }
 
     site.update(&mut value_uf);
@@ -108,47 +95,88 @@ fn complex_func(iterations: u32) -> (u32, u32) {
     let mut site_ufs = SITE_UFS.lock().unwrap();
     let site = site_ufs.get_site(1);
 
-    site.observe_var("VAR:iterations".into(), Tag::new(&iterations));
-    value_uf.make_set(Tag::new(&iterations));
+    site.observe_var(stringify!(iterations), &iterations);
+    value_uf.make_set(&iterations);
     
     let mut current: u32 = 0;
-    site.observe_var("VAR:current".into(), Tag::new(&current));
-    value_uf.make_set(Tag::new(&current));
+    site.observe_var(stringify!(current), &current);
+    value_uf.make_set(&current);
 
     let mut next: u32 = 1;
-    site.observe_var("VAR:next".into(), Tag::new(&next));
-    value_uf.make_set(Tag::new(&next));
+    site.observe_var(stringify!(next), &next);
+    value_uf.make_set(&next);
 
     let mut pows_of_two: u32 = 1;
-    site.observe_var("VAR:pows_of_two".into(), Tag::new(&pows_of_two));
-    value_uf.make_set(Tag::new(&pows_of_two));
+    site.observe_var(stringify!(pows_of_two), &pows_of_two);
+    value_uf.make_set(&pows_of_two);
 
     for i in 0..iterations {
-        site.observe_var("VAR:i".into(), Tag::new(&i));
-        value_uf.make_set(Tag::new(&i));
-        value_uf.union(&Tag::new(&i), &Tag::new(&iterations));
+        site.observe_var(stringify!(i), &i);
+        value_uf.make_set(&i);
+        // TODO: try removing value form Tag struct
+        // should a "new" i value be union_valsed with an "old" i value
+        value_uf.union_vals(&i, &iterations);
 
         let tmp = next;
-        site.observe_var("VAR:tmp".into(), Tag::new(&tmp));
-        value_uf.make_set(Tag::new(&tmp));
-        value_uf.union(&Tag::new(&tmp), &Tag::new(&next));
+        site.observe_var(stringify!(tmp), &tmp);
+        value_uf.make_set(&tmp);
+        value_uf.union_vals(&tmp, &next);
 
-        value_uf.union(&Tag::new(&current), &Tag::new(&next));
+        value_uf.union_vals(&current, &next);
         next = current + next;
-        value_uf.make_set(Tag::new(&next));
-        value_uf.union(&Tag::new(&next), &Tag::new(&current));
+        value_uf.make_set(&next);
+        value_uf.union_vals(&next, &current);
 
         current = tmp;
-        value_uf.make_set(Tag::new(&current));
-        value_uf.union(&Tag::new(&current), &Tag::new(&tmp));
+        value_uf.make_set(&current);
+        value_uf.union_vals(&current, &tmp);
 
-        let old_tag = Tag::new(&pows_of_two);
         pows_of_two = pows_of_two + pows_of_two;
-        value_uf.union(&old_tag, &Tag::new(&pows_of_two));
-
     }
     
     site.update(&mut value_uf);
     
     (current, pows_of_two)
+}
+
+struct Bar {
+    b1: i32
+}
+
+struct Foo {
+    f1: String,
+    f2: i32,
+    default_f3: i32,
+    f4: Bar,
+}
+
+impl Foo {
+    fn new(f1: String, f2: i32, b1: i32) -> Self {
+        Foo {
+            f1,
+            f2,
+            default_f3: -1,
+            f4: Bar {
+                b1,
+            }
+        }
+    }
+}
+
+fn foo(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+fn nested_func() {
+    let mut value_uf = VALUE_UF.lock().unwrap();
+    let mut site_ufs = SITE_UFS.lock().unwrap();
+    let site = site_ufs.get_site(2);
+
+    let f1: String = String::from("Hello world");
+    value_uf.make_set(&f1);
+    // site.observe_var(&f1);
+
+    let f2: i32 = 1;
+    value_uf.make_set(&f2);
+
 }
