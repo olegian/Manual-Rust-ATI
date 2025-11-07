@@ -152,3 +152,19 @@ fn complex_func(iterations: u32) -> (u32, u32) {
     
     (current, pows_of_two)
 }
+
+fn tracked_helper(a: u32, b: u32) -> u32 {
+    let mut value_uf = VALUE_UF.lock().unwrap();
+    // value_uf.union()
+    a + b
+}
+
+fn untracked_helper(a: u32, b: u32) -> u32 {
+    a + b
+}
+
+fn nested_func() {
+    let x = 10;
+    let y = 20;
+
+}
