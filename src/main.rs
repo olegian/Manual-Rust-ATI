@@ -22,8 +22,8 @@ static VALUE_UF: LazyLock<Mutex<UnionFind>> = LazyLock::new(|| Mutex::new(UnionF
 static SITE_UFS: LazyLock<Mutex<Sites>> = LazyLock::new(|| Mutex::new(Sites::new()));
 
 fn main() {
-    simple_func(10, 100);
-    simple_func(20, 200);
+    // simple_func(10, 100);
+    // simple_func(20, 200);
 
     // without this line, we should see two abstract type sets in the output
     // due to the conditional on line 118, otherwise all variables will be in the same sets
@@ -31,6 +31,8 @@ fn main() {
 
     // let res = complex_func(5);
     // println!("{:?}", res);
+
+    nested_func();
 
     let site_ufs = SITE_UFS.lock().unwrap();
     site_ufs.print_analysis();
@@ -139,9 +141,12 @@ fn complex_func(iterations: u32) -> (u32, u32) {
     (current, pows_of_two)
 }
 
+// TODO: copy-by-value into this function means that the union here
+// will not represent the interaction between the passed in values?
+// does this mean that Tags *have* to be passed into the function as well?
 fn tracked_helper(a: u32, b: u32) -> u32 {
     let mut value_uf = VALUE_UF.lock().unwrap();
-    // value_uf.union()
+    value_uf.union_vals(&a, &b);
     a + b
 }
 
@@ -150,7 +155,30 @@ fn untracked_helper(a: u32, b: u32) -> u32 {
 }
 
 fn nested_func() {
-    let x = 10;
-    let y = 20;
+    let mut value_uf = VALUE_UF.lock().unwrap();
+    let mut site_ufs = SITE_UFS.lock().unwrap();
+    let site = site_ufs.get_site(1);
 
+    let x = 10;
+    value_uf.make_set(&x);
+    site.observe_var(stringify!(x), &x);
+
+    let y = 20;
+    value_uf.make_set(&y);
+    site.observe_var(stringify!(y), &y);
+
+    // TODO: this is a problem, using global state requires obtaining a lock before you use 
+    // value_uf, which means that the tracked_helper lock obtain stalls without this ugly workaround
+    drop(value_uf);
+
+    // should update x and y
+    let res = tracked_helper(x, y);
+    value_uf = VALUE_UF.lock().unwrap();
+    value_uf.make_set(&res);
+    site.observe_var(stringify!(res), &res);
+
+    println!("D");
+
+    site.update(&mut value_uf);
+    println!("E");
 }
