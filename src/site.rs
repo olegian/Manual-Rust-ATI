@@ -1,8 +1,6 @@
 use std::collections::HashMap;
-use std::hash::Hash;
-use std::fmt::Debug;
 
-use crate::Tag;
+use crate::tag::Tag;
 use crate::union_find::UnionFind;
 
 /// A site captures a set of lines in the source code under analysis. A site starts
@@ -24,13 +22,13 @@ use crate::union_find::UnionFind;
 /// 
 /// `var_tags` contains the ATI output, mapping the variable identifiers (names) to a value tag,
 /// the leader tag of a set of values in `value_uf` which have been observed interacting together.
-pub struct Site<T> where T: Eq + Hash + Clone {
-    type_uf: UnionFind<T>,
-    var_tags: HashMap<String, T>,
-    observed_var_tags: Vec<(String, T)>,
+pub struct Site {
+    type_uf: UnionFind,
+    var_tags: HashMap<String, Tag>,
+    observed_var_tags: Vec<(String, Tag)>,
 }
 
-impl<T> Site<T> where T: Eq + Hash + Clone {
+impl Site {
     pub fn new() -> Self {
         Site {
             type_uf: UnionFind::new(),
@@ -40,20 +38,20 @@ impl<T> Site<T> where T: Eq + Hash + Clone {
     }
 
     /// Registers a new variable pertaining to this analysis site.
-    pub fn observe_var(&mut self, var: String, val_tag: T) {
-        self.observed_var_tags.push((var, val_tag));
+    pub fn observe_var<V>(&mut self, name: &str, var: &V) {
+        self.observed_var_tags.push((name.into(), Tag::new(var)));
     }
 
     /// Algorithm from "Dynamic inference of Abstract Types" by Guo et. al.
-    pub fn update(&mut self, value_uf: &mut UnionFind<T>) {
+    pub fn update(&mut self, value_uf: &mut UnionFind) {
         for (new_var, new_var_tag) in &self.observed_var_tags {
             let new_leader_tag = value_uf.find(new_var_tag).unwrap(); // ? is this unwrap safe? 
-            self.type_uf.make_set(new_leader_tag.clone());
+            let new_leader_tag = self.type_uf.introduce_tag(new_leader_tag);
 
             if let Some(old_tag) = self.var_tags.get(new_var) {
                 let old_leader_tag = value_uf.find(old_tag).unwrap();
 
-                let merged = self.type_uf.union(&old_leader_tag, &new_leader_tag).unwrap();
+                let merged = self.type_uf.union_tags(&old_leader_tag, &new_leader_tag).unwrap();
                 self.var_tags.insert(new_var.clone(), merged);
             } else {
                 self.var_tags.insert(new_var.clone(), new_leader_tag);
@@ -63,22 +61,22 @@ impl<T> Site<T> where T: Eq + Hash + Clone {
 
     /// Returns the mapping of the ATI output, var identifiers
     /// to value interaction set leader tags.
-    pub fn get_leaders(&self) -> &HashMap<String, T> {
+    pub fn get_leaders(&self) -> &HashMap<String, Tag> {
         &self.var_tags
     }
 }
 
-pub struct Sites<T> where T: Eq + Hash + Clone {
-    locs: HashMap<usize, Site<T>>,
+pub struct Sites {
+    locs: HashMap<usize, Site>,
 }
-impl<T> Sites<T> where T: Eq + Hash + Clone + Debug {
+impl Sites {
     pub fn new() -> Self {
         Sites { locs: HashMap::new()}
     }
 
     /// Registers a new site with a given id, or returns
     /// the site with the provided id.
-    pub fn get_site(&mut self, id: usize) -> &mut Site<T> {
+    pub fn get_site(&mut self, id: usize) -> &mut Site {
         if !self.locs.contains_key(&id) {
             self.locs.insert(id, Site::new());
         }
