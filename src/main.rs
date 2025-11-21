@@ -6,6 +6,119 @@ mod union_find;
 use ati::ATI;
 use tag::Tag;
 
+/*
+ === Compiler Requirements  ===
+ - Define what sites we want to analyze
+   - Probably just all functions included in the source code, excluding
+     all calls to functions which are defined in libraries, etc.
+   - TODO: Is there a good way of getting a list of function identifiers?
+ - In main:
+   - Create new mutable ATI struct instance
+   - Invoke ati.report() before any program exit point
+ - For all structs:
+   - Define a `IdentifierTag` struct, which recursively mirrors all fields,
+     converting primatives to `var_tag: Tag` types, and all structs to the relevant
+     `StructTag`.
+ - For each tracked function (note this happens for `impl`s too):
+   - Modify the signature to accept a Tag type variable for each parameter
+     - TODO: Does this include all parameters? are there specific parameters that do not
+       require instrumentation?
+   - Modify the signature to accept a mutable reference to the ATI struct
+   - Modify the return type to make return a tuple of (val, val_tag)
+   - Invoke ati.get_site, passing in the function identifier
+   - Invoke ati.update_site(site) before every return statement
+   - For each statement in the function (anytime a value is being instrumented, if it is a struct
+     then perform the instrumentation for all primative values in the data struct, using the 
+     appropriate tags in the Tag struct):
+     - If the statement is a `let` binding, which is receiving a value not from a function call,
+       invoke ati.tracked, passing in the variable identifier, a reference to the value, and the
+       site.
+     - If the statement is a `let` binding, which is receiving a value from an instrumented function,
+       invoke site.observe_var passing in the variable identifier, and a reference to the returned tag
+     - If the statement is a `let` binding, which is receiving a value from a non-instrumented function,
+       invoke ati.tracked, as above.
+     - If the statement is a tracked function call:
+       - For variable arguments (ones that have already been bound with a `let`), pass in the value
+         followed by the tag that was created after the `let` statement by the ati.tracked call
+       - For constant arguments, add a `let` statement above the function call, followed by an
+         ati.untracked() call, to get a tag for the value, then pass in both to the function
+     - If the statement is an untracked function call, invoke the function as written.
+     - If the statement includes interacting variables (track a set of operations which define
+       "interacting"), then add an ati.union_tags() call, passing a slice of all tags which
+       have interacted.
+*/
+
+/*
+    Generally: the instrumentation follows this pattern:
+    1. Define new necessary Tag types:
+    struct S { a: prim, b: struct }
+        -->
+    struct STag { a_tag: Tag, b: StructTag}
+
+    2. Convert function signatures:
+    fn ident(f1: prim, f2: prim, f3: struct) -> prim
+        -->  
+    fn ident(f1: prim, f1_tag: &Tag, f2: prim, f2_tag: &Tag, f3: struct, f3_tag: StructTag, ati: &mut ATI) -> (prim, Tag)
+
+    3. process main:
+    fn main() {
+        1. create ATI instance
+        2. create site
+        3. for each binding let statement, add `tracked` / `untracked` calls:
+        3.1) let a = 10
+             let a_tag = ati.tracked(Ident(a), &a, &mut site)
+        3.2) let (a, a_tag) = tracked_func();
+             site.observe_var(Ident(a), &a_tag)
+        3.3) let a = untracked_func();
+             let a_tag = ati.tracked(Ident(a), &a, &mut site)
+        4. for each function call:
+        4.1) let a = tracked_func(f1, f2)  (f1, f2 are variables)
+                -->
+             let (a, a_tag) = tracked_func(f1, f1_tag, f2, f2_tag, &mut ati)
+        4.2) let a = tracked_func(f1, 10)  (f2 is some inline constant)
+                -->
+            let f2 = 10
+             let f2_tag = ati.untracked(&f2) 
+             let a = tracked_func(f1, f1_tag, f2, f2_tag, &mut ati)
+        4.3) let a = untracked_func(f1, f2)
+                -->
+            let a_tag = ati.tracked(Ident(a), &a, &mut site)
+        5. For all interaction sites, add ati.union_tags(&[&tag1, &tag2, &tag3])
+        6. Before each program exit:
+        6.1) ati.update_site(site)
+        6.2) ati.report()
+    }
+
+    4. process all user defined functions:
+    fn user_function(f1: prim, f1_tag: &Tag, f2: struct, f2_tag: StructTag, ati: &mut ATI) -> (prim, Tag) {
+        1. create site
+        2. for each formal:
+        2.1) if formal is a primative: site.observe_var(Ident(f1), f1_tag)
+        2.2) if formal is a struct, for all fields `a`: site.observe_var(Ident(f2.a), f2_tag.a_tag)
+        3. for each binding let statement, add `tracked` / `untracked` calls:
+        3.1) let a = 10
+             let a_tag = ati.tracked(Ident(a), &a, &mut site)
+        3.2) let (a, a_tag) = tracked_func();
+             site.observe_var(Ident(a), &a_tag)
+        3.3) let a = untracked_func();
+             let a_tag = ati.tracked(Ident(a), &a, &mut site)
+        4. for each function call:
+        4.1) let a = tracked_func(f1, f2)  (f1, f2 are variables)
+                -->
+             let (a, a_tag) = tracked_func(f1, f1_tag, f2, f2_tag, ati)  // NOTE: passing &mut ati here
+        4.2) let a = tracked_func(f1, 10)  (f2 is some inline constant here that is never bound to a var)
+                -->
+            let f2 = 10
+            let f2_tag = ati.untracked(&f2) 
+            let a = tracked_func(f1, f1_tag, f2, f2_tag, &mut ati)
+        5. For all interaction sites, add ati.union_tags(&[&tag1, &tag2, &tag3])
+        6. Before each function return:
+        6.1) ati.update_site(site)
+        6.2) return (val, val_tag)
+    }
+
+*/
+
 fn main() {
     let mut ati = ATI::new();
     let mut site = ati.get_site(stringify!(main));
@@ -41,7 +154,8 @@ fn main() {
             doubled_func(30, 300)
 
         we do not bind 30 or 300 to any variable at this site, so we do not want
-        to track it. instead we leave it untracked
+        to track it. instead we leave it untracked, which provides the required 
+        tags, however it does not have the site observe the variable
     */
     let a3 = 30;
     let a3_tag = ati.untracked(&a3);
@@ -54,6 +168,8 @@ fn main() {
     let iterations = 5;
     let iterations_tag = ati.tracked(stringify!(iterations), &iterations, &mut site);
     complex_func(iterations, &iterations_tag, &mut ati);
+
+    uses_structs(&mut ati);
 
     ati.update_site(site);
     ati.report()
@@ -182,23 +298,28 @@ fn tracked_add(a: u32, a_tag: &Tag, b: u32, b_tag: &Tag, ati: &mut ATI) -> (u32,
     (res, res_tag)
 }
 
-struct Inner {
-    a: u32,
-    a_tag: Tag,
-}
-
 struct Data {
     a: u32,
-    a_tag: Tag,
-
     b: String,
-    b_tag: Tag,
-
     c: Inner,
 }
 
+struct DataTag {
+    a_tag: Tag,
+    b_tag: Tag,
+    c_tag: InnerTag,
+}
+
+struct Inner {
+    a: u32,
+}
+
+struct InnerTag {
+    a_tag: Tag,
+}
+
 impl Data {
-    pub fn new(ati: &mut ATI) -> Self {
+    pub fn new(ati: &mut ATI) -> (Self, DataTag) {
         let mut site = ati.get_site(stringify!(Data::new));
         let a = 10;
         let a_tag = ati.tracked(stringify!(Data::a), &a, &mut site);
@@ -209,21 +330,45 @@ impl Data {
         let inner_a = 20;
         let inner_a_tag = ati.tracked(stringify!(Inner::a), &inner_a, &mut site);
 
-        let inner = Inner {
-            a: inner_a,
-            a_tag: inner_a_tag,
-        };
+        let inner = Inner { a: inner_a };
+        let inner_tag = InnerTag { a_tag: inner_a_tag };
 
-        Data {
-            a,
-            a_tag,
-            b,
-            b_tag,
-            c: inner,
-        }
+        ati.update_site(site);
+
+        (
+            Data { a, b, c: inner },
+            DataTag {
+                a_tag,
+                b_tag,
+                c_tag: inner_tag,
+            },
+        )
     }
 }
 
-fn accepts_struct(data: Data, ati: &mut ATI) {
-    let mut site = ati.get_site(stringify!(accepts_struct));
+fn accepts_struct_add_fields(data: &mut Data, data_tag: &mut DataTag, ati: &mut ATI) {
+    let mut site = ati.get_site(stringify!(accepts_struct_add_fields));
+
+    site.observe_var(stringify!(data.a), &data_tag.a_tag);
+    site.observe_var(stringify!(data.b), &data_tag.b_tag);
+    site.observe_var(stringify!(data.c.a), &data_tag.c_tag.a_tag);
+
+    data.c.a += data.a;
+    ati.union_tags(&[&data_tag.a_tag, &data_tag.c_tag.a_tag]);
+
+    ati.update_site(site)
+}
+
+fn uses_structs(ati: &mut ATI) {
+    let mut site = ati.get_site(stringify!(uses_structs));
+
+    let (mut d, mut d_tag) = Data::new(ati);
+    site.observe_var(stringify!(d.a), &d_tag.a_tag);
+    site.observe_var(stringify!(d.b), &d_tag.b_tag);
+    site.observe_var(stringify!(d.c.a), &d_tag.c_tag.a_tag);
+
+
+    accepts_struct_add_fields(&mut d, &mut d_tag, ati);
+
+    ati.update_site(site);
 }
