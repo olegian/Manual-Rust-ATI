@@ -6,6 +6,8 @@ mod union_find;
 use ati::ATI;
 use tag::Tag;
 
+// TODO: Create a Tag trait, that way we can treat Struct tags in the exact same way we treat value tags
+
 /*
  === Compiler Requirements  ===
  - Define what sites we want to analyze
@@ -119,6 +121,7 @@ use tag::Tag;
 
 */
 
+// MARK: MAIN
 fn main() {
     let mut ati = ATI::new();
     let mut site = ati.get_site(stringify!(main));
@@ -179,6 +182,7 @@ fn main() {
 /// Each white space seperated line is a line of code we are analyzing,
 /// the first of which is the actual code, the following are the added
 /// lines to perform ATI.
+// MARK: DOUBLED_FUNC
 fn doubled_func(x: u32, x_tag: &Tag, y: u32, y_tag: &Tag, ati: &mut ATI) {
     let mut site = ati.get_site(stringify!(doubled_func));
     site.observe_var(stringify!(x), x_tag);
@@ -232,6 +236,7 @@ fn doubled_func(x: u32, x_tag: &Tag, y: u32, y_tag: &Tag, ati: &mut ATI) {
 }
 
 // returns the n-th fib number (0-indexed) and 2^n
+// MARK: COMPLEX_FUNC
 fn complex_func(iterations: u32, iterations_tag: &Tag, ati: &mut ATI) -> (u32, u32) {
     let mut site = ati.get_site(stringify!(complex_func));
     site.observe_var(stringify!(iterations), iterations_tag);
@@ -276,6 +281,7 @@ fn complex_func(iterations: u32, iterations_tag: &Tag, ati: &mut ATI) -> (u32, u
 }
 
 /// a "library function", which is not instrumented for ATI
+// MARK: TRACKED/UNTRACKED
 fn untracked_add(a: u32, b: u32) -> u32 {
     let res = a + b;
     res
@@ -298,6 +304,7 @@ fn tracked_add(a: u32, a_tag: &Tag, b: u32, b_tag: &Tag, ati: &mut ATI) -> (u32,
     (res, res_tag)
 }
 
+// MARK: STRUCT HANDLING
 struct Data {
     a: u32,
     b: String,
@@ -356,7 +363,7 @@ fn accepts_struct_add_fields(data: &mut Data, data_tag: &mut DataTag, ati: &mut 
     data.c.a += data.a;
     ati.union_tags(&[&data_tag.a_tag, &data_tag.c_tag.a_tag]);
 
-    ati.update_site(site)
+    ati.update_site(site);
 }
 
 fn uses_structs(ati: &mut ATI) {
