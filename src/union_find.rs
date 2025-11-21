@@ -6,29 +6,27 @@ use crate::tag::Tag;
 /// a unique SetId (which necessarily implements `Eq + Hash + Clone`). This allows
 /// SetId to be a String representation of the address of a particular variable,
 /// any other identifying information, or even a full struct which stores this identifier
-/// alongside whatever useful metadata is helpful for debugging or organizational 
+/// alongside whatever useful metadata is helpful for debugging or organizational
 /// purposes.
-/// 
+///
 /// Each inserted element maintains a 1-1 mapping with it's SetId, passed in when
 /// invoking `make_set`. Each element tracks it's parent via the `parent` Vec.
 /// When elements are added into the structure, it appends a new element to this
-/// Vec. `parent[i]` is the index of the leader element. If `parent[i] == i`, 
+/// Vec. `parent[i]` is the index of the leader element. If `parent[i] == i`,
 /// then element `i` is the leader. `index_to_set[i]` returns the SetId (including
 /// whatever metadata was associated with it). `find(SetId)` will locate the SetId
 /// of the set leader.
-/// 
+///
 /// `rank` is used for determining which direction to perform the union, ultimately
 /// just the standard optimization done with UnionFind structures.
-pub struct UnionFind
-{
+pub struct UnionFind {
     id_to_index: HashMap<Tag, usize>,
     pub index_to_set: Vec<Tag>,
     parent: Vec<usize>,
     rank: Vec<usize>,
 }
 
-impl UnionFind { 
-
+impl UnionFind {
     /// Creates a new UnionFind
     pub fn new() -> Self {
         Self {
@@ -39,13 +37,13 @@ impl UnionFind {
         }
     }
 
-    /// Creates a new unique element in its own set, to be tracked 
+    /// Creates a new unique element in its own set, to be tracked
     /// within this UnionFind. Duplicate SetIds are disallowed.
-    /// 
+    ///
     /// Returns Some(i) if this SetId already corresponds to some set
     /// at parent[i] with rank[i]. Returns None if this operation created
     /// a new set.
-    pub fn make_set<V>(&mut self, var: &V) -> Tag  {
+    pub fn make_set<V>(&mut self, var: &V) -> Tag {
         let id = Tag::new(var);
         self.introduce_tag(id)
     }
@@ -81,12 +79,6 @@ impl UnionFind {
 
     /// Merges the sets which the two passed in id's identify.
     /// Returns the leader SetId of the merged set.
-    pub fn union_vals<V>(&mut self, v1: &V, v2: &V) -> Option<Tag> {
-        let id1 = Tag::new(v1);
-        let id2 = Tag::new(v2);
-        self.union_tags(&id1, &id2)
-    }
-
     pub fn union_tags(&mut self, t1: &Tag, t2: &Tag) -> Option<Tag> {
         let i1 = self.get_index(t1)?;
         let i2 = self.get_index(t2)?;
