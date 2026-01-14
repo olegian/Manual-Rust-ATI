@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::Tag;
+use crate::tag::{Id, TaggedValue};
 use crate::union_find::UnionFind;
 
 /// A site captures a set of lines in the source code under analysis. A site starts
@@ -24,8 +24,8 @@ use crate::union_find::UnionFind;
 /// the leader tag of a set of values in `value_uf` which have been observed interacting together.
 pub struct Site {
     type_uf: UnionFind,
-    var_tags: HashMap<String, Tag>,
-    observed_var_tags: Vec<(String, Tag)>,
+    var_tags: HashMap<String, Id>,
+    observed_var_tags: Vec<(String, Id)>,
     name: String, // Debug information
 }
 
@@ -39,9 +39,20 @@ impl Site {
         }
     }
 
+    pub fn bind_param<T>(&mut self, var_name: &str, tv: &TaggedValue<T>)
+    where
+        T: Copy,
+    {
+        self.observed_var_tags.push((var_name.into(), tv.1));
+    }
+
     /// Registers a new variable pertaining to this analysis site.
-    pub fn observe_var(&mut self, name: &str, var_tag: &Tag) {
-        self.observed_var_tags.push((name.into(), var_tag.clone()));
+    pub fn bind<T>(&mut self, var_name: &str, tv: TaggedValue<T>) -> TaggedValue<T>
+    where
+        T: Copy,
+    {
+        self.observed_var_tags.push((var_name.into(), tv.1));
+        tv
     }
 
     /// Algorithm from "Dynamic inference of Abstract Types" by Guo et. al.

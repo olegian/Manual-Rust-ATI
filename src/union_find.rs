@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::tag::Tag;
+use crate::tag::{Id, Tagger};
 
 /// Implementation of a UnionFind data structure, in which elements are identified via
 /// a unique SetId (which necessarily implements `Eq + Hash + Clone`). This allows
@@ -20,10 +20,11 @@ use crate::tag::Tag;
 /// `rank` is used for determining which direction to perform the union, ultimately
 /// just the standard optimization done with UnionFind structures.
 pub struct UnionFind {
-    id_to_index: HashMap<Tag, usize>,
-    pub index_to_set: Vec<Tag>,
+    id_to_index: HashMap<Id, usize>,
+    pub index_to_set: Vec<Id>,
     parent: Vec<usize>,
     rank: Vec<usize>,
+    tagger: Tagger,
 }
 
 impl UnionFind {
@@ -34,6 +35,7 @@ impl UnionFind {
             index_to_set: Vec::new(),
             parent: Vec::new(),
             rank: Vec::new(),
+            tagger: Tagger::new(),
         }
     }
 
@@ -43,14 +45,14 @@ impl UnionFind {
     /// Returns Some(i) if this SetId already corresponds to some set
     /// at parent[i] with rank[i]. Returns None if this operation created
     /// a new set.
-    pub fn make_set<V>(&mut self, var: &V) -> Tag {
-        let id = Tag::new(var);
+    pub fn make_set(&mut self) -> Id {
+        let id = self.tagger.tag();
         self.introduce_tag(id)
     }
 
     /// Similar to make_set, but does not create a new tag out of a variable
     /// just accepts an existing tag as input
-    pub fn introduce_tag(&mut self, id: Tag) -> Tag {
+    pub fn introduce_tag(&mut self, id: Id) -> Id {
         if self.id_to_index.contains_key(&id) {
             // return Some(*self.id_to_index.get(&id).unwrap());
             return id;
@@ -65,13 +67,13 @@ impl UnionFind {
         return id;
     }
 
-    fn get_index(&self, id: &Tag) -> Option<usize> {
+    fn get_index(&self, id: &Id) -> Option<usize> {
         self.id_to_index.get(id).copied()
     }
 
     /// Find the leader SetId which represents the set that
     /// the passed in SetId identifies.
-    pub fn find(&mut self, tag: &Tag) -> Option<Tag> {
+    pub fn find(&mut self, tag: &Id) -> Option<Id> {
         let index = self.get_index(tag)?;
         let leader_index = self.find_index(index);
         Some(self.index_to_set[leader_index].clone())
@@ -79,7 +81,7 @@ impl UnionFind {
 
     /// Merges the sets which the two passed in id's identify.
     /// Returns the leader SetId of the merged set.
-    pub fn union_tags(&mut self, t1: &Tag, t2: &Tag) -> Option<Tag> {
+    pub fn union_tags(&mut self, t1: &Id, t2: &Id) -> Option<Id> {
         let i1 = self.get_index(t1)?;
         let i2 = self.get_index(t2)?;
         let leader_index = self.union_indices(i1, i2);

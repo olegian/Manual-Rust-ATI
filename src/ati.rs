@@ -1,8 +1,11 @@
+use std::{sync::{Arc, LazyLock, Mutex}};
+
 use crate::{
     site::{Site, Sites},
-    tag::Tag,
+    tag::TaggedValue,
     union_find::UnionFind,
 };
+
 
 pub struct ATI {
     value_uf: UnionFind,
@@ -11,20 +14,21 @@ pub struct ATI {
 
 impl ATI {
     pub fn new() -> Self {
-        ATI {
+        Self {
             value_uf: UnionFind::new(),
             sites: Sites::new(),
         }
     }
 
-    pub fn untracked<V>(&mut self, v: &V) -> Tag {
-        self.value_uf.make_set(v)
-    }
-
-    pub fn tracked<V>(&mut self, var_name: &str, v: &V, site: &mut Site) -> Tag {
-        let tag = self.value_uf.make_set(v);
-        site.observe_var(var_name, &tag);
-        tag
+    // use this function whenever a new literal is created
+    pub fn track<T>(
+        value: T, // value of variable
+    ) -> TaggedValue<T>
+    where
+        T: Copy,
+    {
+        let id = ATI_ANALYSIS.lock().unwrap().value_uf.make_set();
+        TaggedValue::new(value, id)
     }
 
     pub fn get_site(&mut self, id: &str) -> Site {
@@ -36,10 +40,11 @@ impl ATI {
         self.sites.stash(site);
     }
 
-    pub fn union_tags(&mut self, tags: &[&Tag]) {
-        for tags in tags.windows(2) {
-            self.value_uf.union_tags(tags[0], tags[1]);
-        }
+    pub fn union_tags<T>(&mut self, tv1: &TaggedValue<T>, tv2: &TaggedValue<T>)
+    where
+        T: Copy,
+    {
+        self.value_uf.union_tags(&tv1.1, &tv2.1);
     }
 
     pub fn report(&self) {
