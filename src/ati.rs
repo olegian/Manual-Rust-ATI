@@ -6,6 +6,9 @@ use crate::{
     union_find::UnionFind,
 };
 
+pub static ATI_ANALYSIS: LazyLock<Arc<Mutex<ATI>>> = LazyLock::new(|| {
+    Arc::new(Mutex::new(ATI::new()))
+});
 
 pub struct ATI {
     value_uf: UnionFind,
